@@ -1,0 +1,48 @@
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: udru_esports_db
+    restart: always
+    environment:
+      POSTGRES_DB: udru_esports
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "1234"
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./database.sql:/docker-entrypoint-initdb.d/database.sql
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: udru_esports_pgadmin
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@udru.esports
+      PGADMIN_DEFAULT_PASSWORD: "1234"
+    ports:
+      - "8081:80"
+    depends_on:
+      - db
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: udru_esports_web
+    restart: always
+    ports:
+      - "8080:80"
+    volumes:
+      - .:/var/www/html
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: udru_esports
+      DB_USER: postgres
+      DB_PASS: "1234"
+    depends_on:
+      - db
+
+volumes:
+  pgdata:

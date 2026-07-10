@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="UDRU E-Sports Reflex Challenge - ทดสอบปฏิกิริยาตอบสนองด้วย AI Hand Tracking">
+<title>Reflex Challenge | UDRU E-Sports</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Mitr:wght@300;400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+<!-- MediaPipe Hands -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+<style>
+:root { --cyan: #00fff7; --green: #39ff14; --dark: #050508; --card: #0d0d1a; }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Mitr', 'Space Grotesk', sans-serif;
+  background: var(--dark); color: #e0e0e0;
+  overflow: hidden; height: 100vh; width: 100vw;
+  background-image:
+    linear-gradient(rgba(0,255,247,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,255,247,0.04) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* Scanline */
+.scanline-overlay { position: fixed; top:0;left:0;right:0;bottom:0; background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.03) 2px,rgba(0,0,0,0.03) 4px); pointer-events:none; z-index:9999; }
+
+.glow-cyan { color:var(--cyan); text-shadow:0 0 10px var(--cyan),0 0 30px var(--cyan); }
+.glow-green { color:var(--green); text-shadow:0 0 10px var(--green),0 0 30px var(--green); }
+
+/* ======== LAYOUT ======== */
+#app { display: flex; flex-direction: column; height: 100vh; width: 100vw; }
+#hud { flex-shrink: 0; padding: 12px 24px; display: flex; justify-content: space-between; align-items: center; background: rgba(5,5,8,0.9); border-bottom: 1px solid rgba(0,255,247,0.15); backdrop-filter: blur(10px); z-index: 100; }
+#game-area { flex: 1; position: relative; overflow: hidden; }
+
+/* ======== WEBCAM / CANVAS ======== */
+#webcam { position: absolute; top:0; left:0; width:100%; height:100%; object-fit: cover; transform: scaleX(-1); opacity: 0.18; filter: brightness(0.6) hue-rotate(150deg); }
+#overlay-canvas { position: absolute; top:0; left:0; width:100%; height:100%; pointer-events: none; transform: scaleX(-1); }
+#game-canvas { position: absolute; top:0; left:0; width:100%; height:100%; pointer-events: none; }
+
+/* ======== HAND CURSOR ======== */
+#hand-cursor {
+  position: absolute; width: 50px; height: 50px; border-radius: 50%;
+  border: 2px solid var(--cyan);
+  box-shadow: 0 0 20px var(--cyan), 0 0 40px rgba(0,255,247,0.3);
+  pointer-events: none; z-index: 200;
+  transform: translate(-50%, -50%);
+  transition: transform 0.05s linear, box-shadow 0.2s ease;
+  display: none;
+}
+#hand-cursor::before {
+  content: '✋'; font-size: 24px;
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  filter: drop-shadow(0 0 8px var(--cyan));
+}
+#hand-cursor.grabbing { box-shadow: 0 0 30px var(--green), 0 0 60px rgba(57,255,20,0.5); border-color: var(--green); }
+
+/* ======== TARGET (RoV Logo) ======== */
+.target {
+  position: absolute; transform: translate(-50%, -50%);
+  width: 70px; height: 70px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  cursor: none; z-index: 150;
+  background: radial-gradient(circle, rgba(0,255,247,0.2) 0%, transparent 70%);
+  border: 2px solid var(--cyan);
+  box-shadow: 0 0 20px rgba(0,255,247,0.6), 0 0 40px rgba(0,255,247,0.3);
+  font-size: 36px;
+  animation: target-appear 0.3s ease forwards;
+  pointer-events: none;
+}
+
+@keyframes target-appear {
+  from { transform: translate(-50%, -50%) scale(0) rotate(-180deg); opacity: 0; }
+  to   { transform: translate(-50%, -50%) scale(1) rotate(0deg);   opacity: 1; }
+}
+
+@keyframes target-pulse {
+  0%,100% { box-shadow: 0 0 20px rgba(0,255,247,0.6); }
+  50%      { box-shadow: 0 0 40px rgba(0,255,247,0.9), 0 0 80px rgba(0,255,247,0.4); }
+}
+.target { animation: target-appear 0.3s ease forwards, target-pulse 1.5s ease-in-out infinite 0.3s; }
+
+/* ======== HUD ELEMENTS ======== */
+.hud-box {
+  background: rgba(0,255,247,0.06); border: 1px solid rgba(0,255,247,0.2);
+  border-radius: 12px; padding: 8px 20px;
+  display: flex; flex-direction: column; align-items: center;
+  min-width: 100px;
+}
+.hud-label { font-size: 0.65rem; letter-spacing: 0.15em; color: rgba(0,255,247,0.5); text-transform: uppercase; font-family: 'Space Grotesk', sans-serif; }
+.hud-value { font-size: 1.6rem; font-weight: 700; font-family: 'Space Grotesk', sans-serif; line-height: 1; }
+
+/* Timer bar */
+#timer-bar-wrap { flex: 1; margin: 0 20px; height: 8px; background: rgba(255,255,255,0.05); border-radius: 99px; overflow: hidden; border: 1px solid rgba(0,255,247,0.1); }
+#timer-bar { height: 100%; width: 100%; background: linear-gradient(90deg, var(--cyan), var(--green)); border-radius: 99px; transition: width 1s linear, background 0.5s; }
+
+/* ======== SCORE POPUP ======== */
+.score-popup {
+  position: absolute; pointer-events: none; z-index: 300;
+  font-size: 1.8rem; font-weight: 700; font-family: 'Space Grotesk', sans-serif;
+  color: var(--green); text-shadow: 0 0 15px var(--green);
+  animation: score-float 0.9s ease forwards;
+}
+@keyframes score-float {
+  0%   { transform: translate(-50%, -50%) scale(0.5); opacity: 1; }
+  60%  { transform: translate(-50%, -120%) scale(1.2); opacity: 1; }
+  100% { transform: translate(-50%, -200%) scale(0.8); opacity: 0; }
+}
+
+/* ======== OVERLAYS ======== */
+.overlay {
+  position: absolute; top:0;left:0;right:0;bottom:0;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(5,5,8,0.9); z-index: 500;
+  backdrop-filter: blur(8px);
+}
+
+.overlay-card {
+  border: 1px solid rgba(0,255,247,0.3);
+  box-shadow: 0 0 60px rgba(0,255,247,0.15);
+  background: var(--card);
+  border-radius: 24px; padding: 40px; max-width: 500px; width: 90%;
+  text-align: center;
+}
+
+.btn-start {
+  background: linear-gradient(135deg, rgba(57,255,20,0.2), rgba(0,200,50,0.05));
+  border: 1px solid var(--green); color: var(--green);
+  box-shadow: 0 0 20px rgba(57,255,20,0.4);
+  font-family: 'Space Grotesk', sans-serif; font-weight: 700;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  padding: 14px 40px; border-radius: 12px; font-size: 1.1rem;
+  cursor: pointer; transition: all 0.3s ease; width: 100%;
+}
+.btn-start:hover { background: var(--green); color: #000; box-shadow: 0 0 40px rgba(57,255,20,0.7); transform: translateY(-2px); }
+
+.btn-retry {
+  background: linear-gradient(135deg, rgba(0,255,247,0.15), transparent);
+  border: 1px solid var(--cyan); color: var(--cyan);
+  font-family: 'Space Grotesk', sans-serif; font-weight: 600;
+  padding: 12px 32px; border-radius: 12px; font-size: 1rem;
+  cursor: pointer; transition: all 0.3s ease;
+}
+.btn-retry:hover { background: var(--cyan); color: #000; }
+
+.btn-home {
+  background: transparent; border: 1px solid rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.4); padding: 12px 24px; border-radius: 12px;
+  font-family: 'Mitr', sans-serif; cursor: pointer; transition: all 0.3s ease;
+  font-size: 0.9rem;
+}
+.btn-home:hover { border-color: rgba(255,255,255,0.3); color: rgba(255,255,255,0.7); }
+
+/* ======== CAM PERMISSION ======== */
+.cam-status { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; }
+.cam-dot { width: 8px; height: 8px; border-radius: 50%; }
+.cam-dot.on { background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse-dot 2s infinite; }
+.cam-dot.off { background: #ff4d4d; box-shadow: 0 0 8px #ff4d4d; }
+@keyframes pulse-dot { 0%,100%{ opacity:1; } 50%{ opacity:0.4; } }
+
+/* ======== STARS ======== */
+@keyframes twinkle { 0%,100%{ opacity:0.1; } 50%{ opacity:0.6; } }
+.star { position: absolute; border-radius: 50%; background: white; animation: twinkle linear infinite; pointer-events: none; }
+
+/* Countdown */
+@keyframes countdown-pop {
+  0% { transform: translate(-50%,-50%) scale(2); opacity:0; }
+  30%{ transform: translate(-50%,-50%) scale(1); opacity:1; }
+  70%{ transform: translate(-50%,-50%) scale(1); opacity:1; }
+  100%{ transform: translate(-50%,-50%) scale(0.3); opacity:0; }
+}
+#countdown-display {
+  position: absolute; top:50%; left:50%;
+  font-size: 10rem; font-weight: 900; font-family: 'Space Grotesk', sans-serif;
+  color: var(--cyan); text-shadow: 0 0 40px var(--cyan), 0 0 80px var(--cyan);
+  pointer-events: none; z-index: 400; display: none;
+  animation: countdown-pop 1s ease forwards;
+}
+
+/* Result score animation */
+@keyframes score-reveal {
+  from { transform: scale(0); opacity: 0; }
+  to   { transform: scale(1); opacity: 1; }
+}
+#final-score-num { animation: score-reveal 0.6s cubic-bezier(0.34,1.56,0.64,1) forwards; }
+
+/* Medal */
+.medal-badge { font-size: 4rem; filter: drop-shadow(0 0 20px gold); animation: score-reveal 0.5s ease 0.3s both; }
+</style>
+</head>
+<body>
+<div class="scanline-overlay"></div>
+
+<div id="app">
+  <!-- ======== HUD ======== -->
+  <div id="hud">
+    <!-- Left: Logo + Player -->
+    <div class="flex items-center gap-4">
+      <div class="flex items-center gap-2">
+        <i data-lucide="zap" class="w-5 h-5" style="color:var(--cyan)"></i>
+        <span class="font-bold text-sm tracking-widest" style="color:var(--cyan);font-family:'Space Grotesk',sans-serif;">UDRU</span>
+      </div>
+      <div id="cam-status" class="cam-status text-gray-500">
+        <div class="cam-dot off" id="cam-dot"></div>
+        <span id="cam-text" style="font-family:'Space Grotesk',sans-serif;">รอกล้อง...</span>
+      </div>
+    </div>
+
+    <!-- Center: Timer bar + time -->
+    <div class="flex items-center gap-4 flex-1 mx-6">
+      <div class="hud-box" style="min-width:80px;">
+        <div class="hud-label">Time</div>
+        <div class="hud-value glow-cyan" id="time-display">30</div>
+      </div>
+      <div id="timer-bar-wrap">
+        <div id="timer-bar"></div>
+      </div>
+      <div class="hud-box" style="min-width:80px;">
+        <div class="hud-label">Score</div>
+        <div class="hud-value glow-green" id="score-display">0</div>
+      </div>
+    </div>
+
+    <!-- Right: Best + Back -->
+    <div class="flex items-center gap-4">
+      <div class="hud-box">
+        <div class="hud-label">Best</div>
+        <div class="hud-value text-yellow-400" id="best-display">0</div>
+      </div>
+      <a href="index.php" class="text-gray-600 hover:text-gray-300 transition-colors" title="หน้าหลัก">
+        <i data-lucide="home" class="w-5 h-5"></i>
+      </a>
+    </div>
+  </div>
+
+  <!-- ======== GAME AREA ======== -->
+  <div id="game-area">
+    <!-- Stars background -->
+    <div id="stars-container"></div>
+
+    <!-- Webcam feed (mirrored, dimmed) -->
+    <video id="webcam" playsinline autoplay muted></video>
+
+    <!-- MediaPipe landmark overlay -->
+    <canvas id="overlay-canvas"></canvas>
+
+    <!-- Game objects canvas (targets) rendered in DOM -->
+    <div id="targets-container"></div>
+
+    <!-- Hand cursor -->
+    <div id="hand-cursor"></div>
+
+    <!-- Countdown -->
+    <div id="countdown-display">3</div>
+
+    <!-- ======== INTRO OVERLAY ======== -->
+    <div class="overlay" id="intro-overlay">
+      <div class="overlay-card">
+        <!-- Stars decoration -->
+        <div class="text-5xl mb-4">⚡</div>
+        <h2 class="text-3xl font-bold text-white mb-2" style="font-family:'Mitr',sans-serif;">Reflex Challenge</h2>
+        <p class="text-sm mb-1" style="color:var(--cyan);font-family:'Space Grotesk',sans-serif;">UDRU E-SPORTS · HAND TRACKING TEST</p>
+        <p class="text-gray-400 text-sm mt-4 mb-8 leading-relaxed" style="font-family:'Mitr',sans-serif;">
+          ใช้ <strong style="color:var(--cyan);">ฝ่ามือ</strong> เลื่อนในอากาศเพื่อควบคุมเคอร์เซอร์<br>
+          แตะโลโก้ RoV ⚡ ให้ได้มากที่สุดภายใน <strong style="color:var(--green);">30 วินาที</strong><br>
+          ระบบ AI จะตรวจจับฝ่ามือของคุณผ่านกล้องเว็บแคมแบบ Real-time
+        </p>
+        <div class="grid grid-cols-3 gap-3 mb-8 text-center">
+          <div style="background:rgba(0,255,247,0.06);border:1px solid rgba(0,255,247,0.15);border-radius:12px;padding:12px;">
+            <div class="text-2xl mb-1">👋</div>
+            <div class="text-xs text-gray-400" style="font-family:'Mitr',sans-serif;">ยกฝ่ามือ<br>ให้กล้องเห็น</div>
+          </div>
+          <div style="background:rgba(57,255,20,0.06);border:1px solid rgba(57,255,20,0.2);border-radius:12px;padding:12px;">
+            <div class="text-2xl mb-1">🎯</div>
+            <div class="text-xs text-gray-400" style="font-family:'Mitr',sans-serif;">เลื่อนมือ<br>ไปหาโลโก้</div>
+          </div>
+          <div style="background:rgba(255,204,0,0.06);border:1px solid rgba(255,204,0,0.2);border-radius:12px;padding:12px;">
+            <div class="text-2xl mb-1">🏆</div>
+            <div class="text-xs text-gray-400" style="font-family:'Mitr',sans-serif;">จับโลโก้<br>ทำคะแนน</div>
+          </div>
+        </div>
+        <button id="btn-start-game" class="btn-start" onclick="startGame()">
+          <i data-lucide="play-circle" class="w-5 h-5 inline mr-2 -mt-1"></i>เริ่มทดสอบ
+        </button>
+        <p class="text-gray-700 text-xs mt-4" style="font-family:'Space Grotesk',sans-serif;">* ต้องอนุญาตกล้องเว็บแคมก่อนเริ่มเกม</p>
+        <div class="mt-4">
+          <a href="index.php" class="text-gray-600 hover:text-gray-400 text-sm" style="font-family:'Mitr',sans-serif;">← กลับหน้าหลัก</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- ======== RESULT OVERLAY ======== -->
+    <div class="overlay" id="result-overlay" style="display:none;">
+      <div class="overlay-card">
+        <div class="medal-badge" id="result-medal">🏆</div>
+        <h2 class="text-2xl font-bold text-white mt-3 mb-1" style="font-family:'Mitr',sans-serif;">ผลการทดสอบ</h2>
+        <p class="text-xs tracking-widest mb-6" style="color:rgba(0,255,247,0.5);font-family:'Space Grotesk',sans-serif;">REFLEX CHALLENGE COMPLETE</p>
+
+        <!-- Score display -->
+        <div style="border:1px solid rgba(0,255,247,0.2);border-radius:16px;background:rgba(0,255,247,0.04);padding:24px;margin-bottom:20px;">
+          <div class="text-sm text-gray-400 mb-2" style="font-family:'Space Grotesk',sans-serif;">คะแนนที่ได้</div>
+          <div id="final-score-num" class="text-7xl font-bold glow-cyan" style="font-family:'Space Grotesk',sans-serif;">0</div>
+          <div id="new-record-badge" class="hidden mt-3 text-sm font-bold" style="color:var(--green);font-family:'Space Grotesk',sans-serif;">
+            🎉 NEW HIGH SCORE!
+          </div>
+        </div>
+
+        <!-- Stats row -->
+        <div class="grid grid-cols-2 gap-3 mb-6">
+          <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px;text-align:center;">
+            <div class="text-xs text-gray-500 mb-1" style="font-family:'Space Grotesk',sans-serif;">BEST SCORE</div>
+            <div class="text-2xl font-bold text-yellow-400" id="result-best" style="font-family:'Space Grotesk',sans-serif;">-</div>
+          </div>
+          <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px;text-align:center;">
+            <div class="text-xs text-gray-500 mb-1" style="font-family:'Space Grotesk',sans-serif;">PLAYER</div>
+            <div class="text-lg font-bold text-white truncate" id="result-ign" style="font-family:'Space Grotesk',sans-serif;">-</div>
+          </div>
+        </div>
+
+        <div id="result-msg" class="text-sm text-gray-400 mb-6" style="font-family:'Mitr',sans-serif;"></div>
+
+        <div class="flex gap-3">
+          <button class="btn-retry flex-1" onclick="resetGame()">
+            <i data-lucide="rotate-ccw" class="w-4 h-4 inline mr-2 -mt-1"></i>เล่นอีกครั้ง
+          </button>
+          <button class="btn-home" onclick="location.href='index.php'">
+            <i data-lucide="home" class="w-4 h-4 inline mr-1 -mt-1"></i>หน้าหลัก
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /game-area -->
+</div><!-- /app -->
+
+<script>
+// ============================================================
+// GAME STATE
+// ============================================================
+const GAME_DURATION  = 30;     // วินาที
+const TARGET_EMOJI   = '⚡';   // RoV logo emoji
+const HIT_RADIUS     = 55;     // pixel radius สำหรับ hit detection
+const POINTS_PER_HIT = 100;    // คะแนนต่อการ catch
+const MAX_TARGETS    = 3;      // เป้าหมายสูงสุดบนหน้าจอพร้อมกัน
+const TARGET_LIFETIME = 2500;  // ms ก่อนเป้าหมายหายเอง
+
+let score        = 0;
+let bestScore    = 0;
+let timeLeft     = GAME_DURATION;
+let gameRunning  = false;
+let gameTimer    = null;
+let targets      = [];
+let handX        = -999;
+let handY        = -999;
+let camReady     = false;
+let playerIGN    = 'Player';
+let targetSpawnTimer = null;
+
+// ============================================================
+// DOM refs
+// ============================================================
+const webcamEl        = document.getElementById('webcam');
+const overlayCanvas   = document.getElementById('overlay-canvas');
+const overlayCtx      = overlayCanvas.getContext('2d');
+const handCursor      = document.getElementById('hand-cursor');
+const scoreDisplay    = document.getElementById('score-display');
+const timeDisplay     = document.getElementById('time-display');
+const timerBar        = document.getElementById('timer-bar');
+const bestDisplay     = document.getElementById('best-display');
+const introOverlay    = document.getElementById('intro-overlay');
+const resultOverlay   = document.getElementById('result-overlay');
+const targetsContainer= document.getElementById('targets-container');
+const countdownEl     = document.getElementById('countdown-display');
+const gameArea        = document.getElementById('game-area');
+const camDot          = document.getElementById('cam-dot');
+const camText         = document.getElementById('cam-text');
+
+// ============================================================
+// Init stars background
+// ============================================================
+function initStars() {
+  const container = document.getElementById('stars-container');
+  container.style.cssText = 'position:absolute;top:0;left:0;right:0;bottom:0;pointer-events:none;';
+  for (let i = 0; i < 60; i++) {
+    const star = document.createElement('div');
+    star.className = 'star';
+    const s = Math.random() * 2 + 1;
+    star.style.cssText = `
+      width: ${s}px; height: ${s}px;
+      left: ${Math.random()*100}%;
+      top: ${Math.random()*100}%;
+      animation-duration: ${2+Math.random()*4}s;
+      animation-delay: ${Math.random()*4}s;
+      opacity: 0.2;
+    `;
+    container.appendChild(star);
+  }
+}
+initStars();
+
+// ============================================================
+// Resize canvas
+// ============================================================
+function resizeCanvas() {
+  const rect = gameArea.getBoundingClientRect();
+  overlayCanvas.width  = rect.width;
+  overlayCanvas.height = rect.height;
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+// ============================================================
+// MediaPipe Hands Setup
+// ============================================================
+const hands = new Hands({
+  locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+});
+
+hands.setOptions({
+  maxNumHands: 1,
+  modelComplexity: 1,
+  minDetectionConfidence: 0.7,
+  minTrackingConfidence: 0.5
+});
+
+hands.onResults(onHandsResults);
+
+// Camera
+const camera = new Camera(webcamEl, {
+  onFrame: async () => {
+    await hands.send({ image: webcamEl });
+  },
+  width: 1280,
+  height: 720
+});
+
+camera.start()
+  .then(() => {
+    camReady = true;
+    camDot.className = 'cam-dot on';
+    camText.textContent = 'กล้องพร้อม';
+    camText.style.color = '#39ff14';
+  })
+  .catch(() => {
+    camDot.className = 'cam-dot off';
+    camText.textContent = 'ไม่พบกล้อง';
+    camText.style.color = '#ff4d4d';
+  });
+
+// ============================================================
+// Hand tracking results
+// ============================================================
+function onHandsResults(results) {
+  const w = overlayCanvas.width;
+  const h = overlayCanvas.height;
+  overlayCtx.clearRect(0, 0, w, h);
+
+  if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+    const landmarks = results.multiHandLandmarks[0];
+
+    // Draw connection lines (faint)
+    overlayCtx.strokeStyle = 'rgba(0,255,247,0.15)';
+    overlayCtx.lineWidth = 1;
+    drawConnectors(overlayCtx, landmarks, HAND_CONNECTIONS, { color: 'rgba(0,255,247,0.2)', lineWidth: 1 });
+    drawLandmarks(overlayCtx, landmarks, { color: 'rgba(0,255,247,0.4)', lineWidth: 1, radius: 3 });
+
+    // Index finger tip = landmark 8; Palm center = landmark 9
+    // Use wrist (0) for smoother overall palm tracking
+    const palmBase  = landmarks[0];  // wrist
+    const indexTip  = landmarks[8];  // index finger tip
+
+    // Mirror X (video is mirrored with CSS)
+    const rawX = (1 - indexTip.x) * w;
+    const rawY = indexTip.y * h;
+
+    handX = rawX;
+    handY = rawY;
+
+    handCursor.style.display = 'block';
+    handCursor.style.left    = handX + 'px';
+    handCursor.style.top     = handY + 'px';
+
+    // Check pinch (thumb tip to index tip distance)
+    const thumbTip  = landmarks[4];
+    const dx = thumbTip.x - indexTip.x;
+    const dy = thumbTip.y - indexTip.y;
+    const pinchDist = Math.sqrt(dx*dx + dy*dy);
+    if (pinchDist < 0.05) {
+      handCursor.classList.add('grabbing');
+    } else {
+      handCursor.classList.remove('grabbing');
+    }
+
+    // Hit detection during game
+    if (gameRunning) {
+      checkHits();
+    }
+  } else {
+    handX = -999; handY = -999;
+    handCursor.style.display = 'none';
+  }
+}
+
+// ============================================================
+// Target Management
+// ============================================================
+function spawnTarget() {
+  if (!gameRunning) return;
+  if (targets.length >= MAX_TARGETS) return;
+
+  const margin = 80;
+  const rect = gameArea.getBoundingClientRect();
+  const x = margin + Math.random() * (rect.width  - margin * 2);
+  const y = margin + Math.random() * (rect.height - margin * 2);
+
+  const el = document.createElement('div');
+  el.className = 'target';
+  el.style.left = x + 'px';
+  el.style.top  = y + 'px';
+  el.textContent = TARGET_EMOJI;
+
+  const tid = Date.now() + Math.random();
+  el.dataset.tid = tid;
+
+  targetsContainer.appendChild(el);
+  targets.push({ el, x, y, tid });
+
+  // Auto remove after lifetime
+  setTimeout(() => removeTarget(tid, false), TARGET_LIFETIME);
+}
+
+function removeTarget(tid, hit = false) {
+  const idx = targets.findIndex(t => t.tid == tid);
+  if (idx === -1) return;
+  const { el } = targets[idx];
+
+  if (hit) {
+    el.style.transition = 'all 0.2s ease';
+    el.style.transform   = 'translate(-50%,-50%) scale(2)';
+    el.style.opacity     = '0';
+    el.style.filter      = 'brightness(3)';
+  } else {
+    el.style.transition  = 'all 0.3s ease';
+    el.style.transform   = 'translate(-50%,-50%) scale(0)';
+    el.style.opacity     = '0';
+  }
+
+  setTimeout(() => el.remove(), 300);
+  targets.splice(idx, 1);
+}
+
+function clearTargets() {
+  targets.forEach(t => t.el.remove());
+  targets = [];
+}
+
+function checkHits() {
+  for (let i = targets.length - 1; i >= 0; i--) {
+    const t = targets[i];
+    const dx = handX - t.x;
+    const dy = handY - t.y;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+
+    if (dist < HIT_RADIUS) {
+      // HIT!
+      score += POINTS_PER_HIT;
+      scoreDisplay.textContent = score;
+
+      // Show +100 popup
+      const popup = document.createElement('div');
+      popup.className = 'score-popup';
+      popup.textContent = '+' + POINTS_PER_HIT;
+      popup.style.left = t.x + 'px';
+      popup.style.top  = t.y + 'px';
+      gameArea.appendChild(popup);
+      setTimeout(() => popup.remove(), 900);
+
+      removeTarget(t.tid, true);
+
+      // Spawn new target quickly
+      setTimeout(spawnTarget, 200);
+    }
+  }
+}
+
+// ============================================================
+// Game Flow
+// ============================================================
+function startGame() {
+  if (!camReady) {
+    alert('กรุณารอให้กล้องพร้อมก่อน');
+    return;
+  }
+
+  // Hide intro
+  introOverlay.style.display = 'none';
+
+  // Countdown 3-2-1
+  let count = 3;
+  countdownEl.style.display = 'block';
+  countdownEl.textContent = count;
+
+  const countInterval = setInterval(() => {
+    count--;
+    if (count > 0) {
+      // Re-trigger animation
+      countdownEl.style.animation = 'none';
+      countdownEl.offsetHeight; // reflow
+      countdownEl.style.animation = 'countdown-pop 1s ease forwards';
+      countdownEl.textContent = count;
+    } else if (count === 0) {
+      countdownEl.textContent = 'GO!';
+      countdownEl.style.color  = '#39ff14';
+      countdownEl.style.textShadow = '0 0 40px #39ff14, 0 0 80px #39ff14';
+      countdownEl.style.animation = 'none';
+      countdownEl.offsetHeight;
+      countdownEl.style.animation = 'countdown-pop 0.7s ease forwards';
+    } else {
+      countdownEl.style.display = 'none';
+      clearInterval(countInterval);
+      beginGame();
+    }
+  }, 1000);
+}
+
+function beginGame() {
+  gameRunning = true;
+  score       = 0;
+  timeLeft    = GAME_DURATION;
+  scoreDisplay.textContent = 0;
+  timeDisplay.textContent  = GAME_DURATION;
+  timerBar.style.width     = '100%';
+  timerBar.style.background= 'linear-gradient(90deg, var(--cyan), var(--green))';
+
+  // Spawn initial targets
+  spawnTarget();
+  setTimeout(spawnTarget, 400);
+  setTimeout(spawnTarget, 800);
+
+  // Target spawner
+  targetSpawnTimer = setInterval(() => {
+    if (targets.length < MAX_TARGETS) spawnTarget();
+  }, 800);
+
+  // Game countdown
+  gameTimer = setInterval(() => {
+    timeLeft--;
+    timeDisplay.textContent = timeLeft;
+    timerBar.style.width = (timeLeft / GAME_DURATION * 100) + '%';
+
+    // Color warning
+    if (timeLeft <= 10) {
+      timerBar.style.background = 'linear-gradient(90deg, #ff4d4d, #ff9f43)';
+      timeDisplay.style.color = '#ff6b6b';
+    }
+    if (timeLeft <= 5) {
+      timeDisplay.style.textShadow = '0 0 20px #ff4d4d';
+    }
+
+    if (timeLeft <= 0) {
+      endGame();
+    }
+  }, 1000);
+}
+
+async function endGame() {
+  clearInterval(gameTimer);
+  clearInterval(targetSpawnTimer);
+  gameRunning = false;
+  handCursor.style.display = 'none';
+  clearTargets();
+
+  // Update best locally
+  if (score > bestScore) bestScore = score;
+  bestDisplay.textContent = bestScore;
+
+  // Send score to server
+  let serverResponse = null;
+  try {
+    const res = await fetch('update_score.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ score: score })
+    });
+    serverResponse = await res.json();
+  } catch (e) {
+    console.warn('Score save failed (offline mode?):', e);
+  }
+
+  // Show result
+  showResult(serverResponse);
+}
+
+function showResult(serverRes) {
+  // Final score
+  document.getElementById('final-score-num').textContent = score;
+
+  // IGN
+  playerIGN = serverRes?.in_game_name || playerIGN || 'Player';
+  document.getElementById('result-ign').textContent = playerIGN;
+
+  // Best
+  const best = serverRes?.best_score ?? bestScore;
+  document.getElementById('result-best').textContent = best;
+  bestDisplay.textContent = best;
+
+  // New record?
+  if (serverRes?.is_new_record) {
+    document.getElementById('new-record-badge').classList.remove('hidden');
+    document.getElementById('result-medal').textContent = '🏆';
+  } else {
+    document.getElementById('new-record-badge').classList.add('hidden');
+    document.getElementById('result-medal').textContent = score > 1000 ? '⭐' : '🎮';
+  }
+
+  // Message
+  const msgEl = document.getElementById('result-msg');
+  if (serverRes?.message) {
+    msgEl.textContent = serverRes.message;
+  } else if (!serverRes) {
+    msgEl.textContent = 'ไม่สามารถบันทึกคะแนนได้ (ต้องเข้าสู่ระบบก่อน)';
+  }
+
+  // Rating message
+  let rating = '';
+  if (score >= 2000) rating = '🔥 ระดับโปร! ฝีมือเยี่ยมมาก';
+  else if (score >= 1200) rating = '⚡ ดีมาก! ปฏิกิริยาคมชัด';
+  else if (score >= 600)  rating = '👍 ดี! ยังพัฒนาได้อีก';
+  else                    rating = '💪 พยายามต่อไป! ฝึกฝนเพิ่มเติม';
+  if (rating) msgEl.textContent += (msgEl.textContent ? ' · ' : '') + rating;
+
+  resultOverlay.style.display = 'flex';
+  lucide.createIcons();
+}
+
+function resetGame() {
+  resultOverlay.style.display = 'none';
+  score    = 0;
+  timeLeft = GAME_DURATION;
+  scoreDisplay.textContent = 0;
+  timeDisplay.textContent  = GAME_DURATION;
+  timerBar.style.width     = '100%';
+  timerBar.style.background= 'linear-gradient(90deg, var(--cyan), var(--green))';
+  timeDisplay.style.color  = 'var(--cyan)';
+  timeDisplay.style.textShadow = '';
+  document.getElementById('new-record-badge').classList.add('hidden');
+  clearTargets();
+
+  // Countdown again
+  let count = 3;
+  countdownEl.style.display  = 'block';
+  countdownEl.style.color    = 'var(--cyan)';
+  countdownEl.style.textShadow = '0 0 40px var(--cyan), 0 0 80px var(--cyan)';
+  countdownEl.textContent    = count;
+  countdownEl.style.animation = 'none';
+  countdownEl.offsetHeight;
+  countdownEl.style.animation = 'countdown-pop 1s ease forwards';
+
+  const ci = setInterval(() => {
+    count--;
+    if (count > 0) {
+      countdownEl.style.animation = 'none';
+      countdownEl.offsetHeight;
+      countdownEl.style.animation = 'countdown-pop 1s ease forwards';
+      countdownEl.textContent = count;
+    } else if (count === 0) {
+      countdownEl.textContent = 'GO!';
+      countdownEl.style.color = '#39ff14';
+      countdownEl.style.textShadow = '0 0 40px #39ff14';
+      countdownEl.style.animation = 'none';
+      countdownEl.offsetHeight;
+      countdownEl.style.animation = 'countdown-pop 0.7s ease forwards';
+    } else {
+      countdownEl.style.display = 'none';
+      clearInterval(ci);
+      beginGame();
+    }
+  }, 1000);
+}
+
+// ============================================================
+// Init Lucide + fetch player info from session (best score)
+// ============================================================
+lucide.createIcons();
+
+// Fetch best score on load
+fetch('update_score.php', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  credentials: 'same-origin',
+  body: JSON.stringify({ score: -1 }) // score -1 won't update anything
+}).then(r => r.json()).then(d => {
+  if (d.best_score !== undefined) {
+    bestScore = d.best_score;
+    bestDisplay.textContent = bestScore;
+  }
+  if (d.in_game_name) playerIGN = d.in_game_name;
+}).catch(() => {});
+
+// Handle URL params
+const params = new URLSearchParams(location.search);
+if (params.get('returning') === '1') {
+  // Show returning player notification
+  const notif = document.createElement('div');
+  notif.style.cssText = 'position:fixed;top:80px;right:20px;background:rgba(0,255,247,0.1);border:1px solid rgba(0,255,247,0.3);border-radius:12px;padding:12px 20px;font-family:Mitr,sans-serif;font-size:0.85rem;color:#00fff7;z-index:600;animation:slideIn 0.4s ease;';
+  notif.innerHTML = '👋 ยินดีต้อนรับกลับมา! โหลดประวัติเดิมแล้ว';
+  document.body.appendChild(notif);
+  setTimeout(() => notif.remove(), 4000);
+}
+</script>
+</body>
+</html>

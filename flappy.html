@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="th">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Controlled Flappy Bird</title>
+    <style>
+        body {
+            margin: 0;
+            background: #222;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            color: white;
+            font-family: Arial, sans-serif;
+        }
+
+        canvas {
+            border: 4px solid #fff;
+            background: #70c5ce;
+            display: block;
+        }
+
+        #info {
+            margin-top: 10px;
+            font-size: 16px;
+        }
+
+        #mic-bar {
+            width: 400px;
+            height: 10px;
+            background: #444;
+            margin-top: 5px;
+            position: relative;
+        }
+
+        #mic-level {
+            width: 0%;
+            height: 100%;
+            background: #0f0;
+        }
+
+        #threshold-line {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: red;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>Voice Flappy Bird</h1>
+    <canvas id="gameCanvas" width="400" height="500"></canvas>
+
+    <div id="info">ระดับเสียงไมค์ปัจจุบัน (เส้นสีแดงคือเกณฑ์ให้นกโดด):</div>
+    <div id="mic-bar">
+        <div id="mic-level"></div>
+        <div id="threshold-line" style="left: 25%;"></div> <!-- ปรับความไวตรงนี้ (25% คือเกณฑ์) -->
+    </div>
+
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+
+        // ตั้งค่าตัวแปรเกม
+        let bird = { x: 50, y: 150, width: 30, height: 30, gravity: 0.4, velocity: 0, jump: -7 };
+        let pipes = [];
+        let frame = 0;
+        let score = 0;
+        let gameOver = false;
+        let gameStarted = false;
+
+        // ตั้งค่าเสียง (Voice Control Settings)
+        let audioContext;
+        let analyser;
+        let microphone;
+        let javascriptNode;
+        const VOICE_THRESHOLD = 0.25; // ความดังที่นกจะกระโดด (0.0 ถึง 1.0) ปรับลดลงถ้าอยากให้ไวขึ้น
+
+        function initAudio() {
+            navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+                .then(function (stream) {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    analyser = audioContext.createAnalyser();
+                    microphone = audioContext.createMediaStreamSource(stream);
+                    javascriptNode = audioContext.createScriptProcessor(2048, 1, 1);
+
+                    analyser.smoothingTimeConstant = 0.3;
+                    analyser.fftSize = 1024;
+
+                    microphone.connect(analyser);
+                    analyser.connect(javascriptNode);
+                    javascriptNode.connect(audioContext.destination);
+
+                    javascriptNode.onaudioprocess = function () {
+                        let array = new Uint8Array(analyser.frequencyBinCount);
+                        analyser.getByteFrequencyData(array);
+                        let values = 0;
+
+                        let length = array.length;
+                        for (let i = 0; i < length; i++) {
+                            values += array[i];
+                        }
+
+                        let average = values / length;
+                        let volume = average / 128; // แปลงค่าให้อยู่ในช่วง 0 - 2 (ปกติจะอยู่ราวๆ 0-1)
+
+                        // อัปเดตแถบระดับเสียงให้ผู้เล่นเห็น
+                        document.getElementById("mic-level").style.width = Math.min(volume * 100, 100) + "%";
+
+                        // ถ้าระดับเสียงดังกว่าที่ตั้งไว้ และเกมยังไม่จบ ให้นกกระโดด
+                        if (volume > VOICE_THRESHOLD) {
+                            if (!gameStarted) gameStarted = true;
+                            if (!gameOver) {
+                                bird.velocity = bird.jump;
+                            } else {
+                                resetGame();
+                            }
+                        }
+                    }
+                })
+                .catch(function (err) {
+                    alert("กรุณาอนุญาตให้ใช้งานไมโครโฟนเพื่อเล่นเกมด้วยเสียง");
+                    console.log("The following error occurred: " + err);
+                });
+        }
+
+        // กดคลิกที่หน้าจอก่อนหนึ่งครั้งเพื่อเปิดใช้งาน Audio Context (ตามกฎความปลอดภัยของเบราว์เซอร์)
+        window.addEventListener('click', () => {
+            if (!audioContext) {
+                initAudio();
+            }
+            if (gameOver) {
+                resetGame();
+            }
+        });
+
+        function resetGame() {
+            bird.y = 150;
+            bird.velocity = 0;
+            pipes = [];
+            score = 0;
+            frame = 0;
+            gameOver = false;
+        }
+
+        function draw() {
+            // วาดพื้นหลัง
+            ctx.fillStyle = "#70c5ce";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // วาดนก
+            ctx.fillStyle = "#f39c12";
+            ctx.fillRect(bird.x, bird.y, bird.width, bird.height);
+
+            // วาดท่อ
+            ctx.fillStyle = "#27ae60";
+            for (let i = 0; i < pipes.length; i++) {
+                ctx.fillRect(pipes[i].x, 0, pipes[i].width, pipes[i].top);
+                ctx.fillRect(pipes[i].x, canvas.height - pipes[i].bottom, pipes[i].width, pipes[i].bottom);
+            }
+
+            // วาดคะแนน
+            ctx.fillStyle = "#fff";
+            ctx.font = "24px Arial";
+            ctx.fillText("Score: " + score, 10, 30);
+
+            if (!gameStarted) {
+                ctx.fillStyle = "rgba(0,0,0,0.5)";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = "#fff";
+                ctx.font = "20px Arial";
+                ctx.textAlign = "center";
+                ctx.fillText("ส่งเสียง หรือคลิก เพื่อเริ่มเกม", canvas.width / 2, canvas.height / 2);
+                ctx.textAlign = "left";
+            }
+
+            if (gameOver) {
+                ctx.fillStyle = "rgba(0,0,0,0.6)";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = "#fff";
+                ctx.font = "30px Arial";
+                ctx.textAlign = "center";
+                ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2 - 20);
+                ctx.font = "18px Arial";
+                ctx.fillText("ส่งเสียงดังๆ เพื่อเริ่มใหม่", canvas.width / 2, canvas.height / 2 + 20);
+                ctx.textAlign = "left";
+            }
+        }
+
+        function update() {
+            if (!gameStarted || gameOver) return;
+
+            bird.velocity += bird.gravity;
+            bird.y += bird.velocity;
+
+            // ชนขอบบนหรือขอบล่าง
+            if (bird.y + bird.height > canvas.height || bird.y < 0) {
+                gameOver = true;
+            }
+
+            // สร้างท่อใหม่ทุกๆ 100 เฟรม
+            if (frame % 100 === 0) {
+                let gap = 120; // ช่องว่างระหว่างท่อบน-ล่าง
+                let topHeight = Math.floor(Math.random() * (canvas.height - gap - 100)) + 50;
+                let bottomHeight = canvas.height - gap - topHeight;
+                pipes.push({ x: canvas.width, width: 50, top: topHeight, bottom: bottomHeight, passed: false });
+            }
+
+            // ขยับท่อและตรวจจับการชน
+            for (let i = pipes.length - 1; i >= 0; i--) {
+                pipes[i].x -= 2; // ความเร็วท่อ
+
+                // ตรวจจับการชน (Collision)
+                if (
+                    bird.x < pipes[i].x + pipes[i].width &&
+                    bird.x + bird.width > pipes[i].x &&
+                    (bird.y < pipes[i].top || bird.y + bird.height > canvas.height - pipes[i].bottom)
+                ) {
+                    gameOver = true;
+                }
+
+                // นับคะแนนเมื่อผ่านท่อ
+                if (!pipes[i].passed && pipes[i].x + pipes[i].width < bird.x) {
+                    score++;
+                    pipes[i].passed = true;
+                }
+
+                // ลบท่อที่หลุดจอออกไป
+                if (pipes[i].x + pipes[i].width < 0) {
+                    pipes.splice(i, 1);
+                }
+            }
+
+            frame++;
+        }
+
+        function loop() {
+            update();
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        loop();
+    </script>
+
+</body>
+
+</html>

@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="th">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LingoLand - Fun English Learning Game</title>
+    <!-- Tailwind CSS สำหรับดีไซน์ที่ทันสมัยและโมเดิร์น -->
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <!-- Google Fonts: ร่วมสมัย น่ารัก และอ่านง่าย -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Fredoka:wght@300..700&family=Prompt:wght@300;400;600&display=swap"
+        rel="stylesheet">
+    <!-- Animate.css สำหรับเอฟเฟกต์เคลื่อนไหวสุดน่ารัก -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css" />
+
+    <style>
+        body {
+            font-family: 'Fredoka', 'Prompt', sans-serif;
+            background: linear-gradient(135deg, #FFE5EC 0%, #F0E6FF 100%);
+        }
+
+        .card-flip {
+            perspective: 1000px;
+        }
+
+        .card-inner {
+            transition: transform 0.6s;
+            transform-style: preserve-3d;
+        }
+
+        .card-flip.flipped .card-inner {
+            transform: rotateY(180deg);
+        }
+
+        .card-front,
+        .card-back {
+            backface-visibility: hidden;
+        }
+
+        .card-back {
+            transform: rotateY(180deg);
+        }
+    </style>
+</head>
+
+<body class="min-h-screen flex flex-col justify-between text-slate-700">
+
+    <!-- Top Navigation Bar -->
+    <nav class="bg-white/80 backdrop-blur-md shadow-sm sticky top-0 z-50 px-6 py-4 flex justify-between items-center">
+        <div class="flex items-center gap-2 cursor-pointer" onclick="showScreen('home')">
+            <span class="text-3xl animate-bounce">✨</span>
+            <span
+                class="text-2xl font-bold bg-gradient-to-r flex from-pink-500 to-purple-600 bg-clip-text text-transparent">LingoLand</span>
+        </div>
+        <div class="flex items-center gap-4 bg-purple-100 px-4 py-2 rounded-full">
+            <span class="text-xl">🏆</span>
+            <span id="score-display" class="font-bold text-purple-700 text-lg">Score: 0</span>
+        </div>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main class="flex-grow container mx-auto max-w-xl p-4 flex flex-col justify-center items-center">
+
+        <!-- 1. HOME SCREEN -->
+        <div id="screen-home" class="w-full text-center space-y-6 animate__animated animate__fadeIn">
+            <div class="space-y-2">
+                <h1 class="text-4xl font-extrabold text-purple-600">ยินดีต้อนรับสู่ดินแดนแห่งการเรียนรู้!</h1>
+                <p class="text-slate-500 text-lg">เลือกโหมดการเล่นเพื่อเริ่มสนุกกันเลย 🎉</p>
+            </div>
+
+            <div class="grid grid-cols-1 gap-4 w-full max-w-sm mx-auto">
+                <!-- Mode 1 -->
+                <button onclick="startVocabulary()"
+                    class="flex items-center justify-between p-5 bg-white border-2 border-pink-200 hover:border-pink-400 rounded-3xl shadow-md shadow-pink-100 transition-all transform hover:-translate-y-1 group">
+                    <div class="flex items-center gap-4">
+                        <span
+                            class="text-4xl bg-pink-100 p-3 rounded-2xl group-hover:scale-110 transition-transform">🦁</span>
+                        <div class="text-left">
+                            <h3 class="font-bold text-xl text-pink-600">Vocab Mastery</h3>
+                            <p class="text-sm text-slate-400">ฝึกคำศัพท์ผ่านการ์ดรูปภาพ</p>
+                        </div>
+                    </div>
+                    <span class="text-2xl text-pink-300">➜</span>
+                </button>
+
+                <!-- Mode 2 -->
+                <button onclick="startQuiz()"
+                    class="flex items-center justify-between p-5 bg-white border-2 border-amber-200 hover:border-amber-400 rounded-3xl shadow-md shadow-amber-100 transition-all transform hover:-translate-y-1 group">
+                    <div class="flex items-center gap-4">
+                        <span
+                            class="text-4xl bg-amber-100 p-3 rounded-2xl group-hover:scale-110 transition-transform">🧠</span>
+                        <div class="text-left">
+                            <h3 class="font-bold text-xl text-amber-600">Fun Quiz</h3>
+                            <p class="text-sm text-slate-400">ตอบคำถามท้าทายสมอง</p>
+                        </div>
+                    </div>
+                    <span class="text-2xl text-amber-300">➜</span>
+                </button>
+
+                <!-- Mode 3 -->
+                <button onclick="startSpeaking()"
+                    class="flex items-center justify-between p-5 bg-white border-2 border-teal-200 hover:border-teal-400 rounded-3xl shadow-md shadow-teal-100 transition-all transform hover:-translate-y-1 group">
+                    <div class="flex items-center gap-4">
+                        <span
+                            class="text-4xl bg-teal-100 p-3 rounded-2xl group-hover:scale-110 transition-transform">🗣️</span>
+                        <div class="text-left">
+                            <h3 class="font-bold text-xl text-teal-600">Speak Up</h3>
+                            <p class="text-sm text-slate-400">ฝึกออกเสียงกับ AI ตรวจจับภาษา</p>
+                        </div>
+                    </div>
+                    <span class="text-2xl text-teal-300">➜</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- 2. VOCABULARY SCREEN (Flashcards) -->
+        <div id="screen-vocab" class="w-full max-w-sm hidden animate__animated animate__fadeIn">
+            <button onclick="showScreen('home')"
+                class="mb-4 text-slate-500 flex items-center gap-1 font-medium hover:text-purple-600">
+                <span>⬅</span> กลับหน้าแรก
+            </button>
+
+            <div id="vocab-card" class="card-flip w-full h-80 cursor-pointer mb-6"
+                onclick="this.classList.toggle('flipped')">
+                <div class="card-inner w-full h-full relative text-center">
+                    <!-- Front -->
+                    <div
+                        class="card-front absolute inset-0 bg-white rounded-3xl shadow-lg border-2 border-pink-100 flex flex-col justify-center items-center p-6 space-y-4">
+                        <span id="vocab-emoji" class="text-8xl">🍎</span>
+                        <h2 id="vocab-word" class="text-4xl font-extrabold text-slate-800 tracking-wide">Apple</h2>
+                        <p class="text-xs text-slate-400 animate-pulse">กดที่นี่เพื่อดูคำแปล ✨</p>
+                    </div>
+                    <!-- Back -->
+                    <div
+                        class="card-back absolute inset-0 bg-gradient-to-br from-pink-400 to-rose-500 text-white rounded-3xl shadow-lg flex flex-col justify-center items-center p-6 space-y-4">
+                        <h2 id="vocab-translation" class="text-4xl font-bold">แอปเปิ้ล</h2>
+                        <button
+                            onclick="event.stopPropagation(); playSound(document.getElementById('vocab-word').innerText)"
+                            class="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-full flex items-center gap-2 font-medium">
+                            🔊 ฟังเสียงออกเสียง
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <button onclick="nextVocab()"
+                class="w-full bg-pink-500 hover:bg-pink-600 text-white text-xl font-bold py-4 rounded-2xl shadow-lg shadow-pink-200 transition-all transform active:scale-95">
+                คำถัดไป ➔
+            </button>
+        </div>
+
+        <!-- 3. QUIZ SCREEN -->
+        <div id="screen-quiz" class="w-full max-w-sm hidden animate__animated animate__fadeIn">
+            <button onclick="showScreen('home')"
+                class="mb-4 text-slate-500 flex items-center gap-1 font-medium hover:text-purple-600">
+                <span>⬅</span> กลับหน้าแรก
+            </button>
+
+            <div class="bg-white rounded-3xl p-6 shadow-lg border-2 border-amber-100 space-y-6">
+                <div class="flex justify-between items-center">
+                    <span class="bg-amber-100 text-amber-700 px-3 py-1 rounded-full text-sm font-bold">Quiz Mode</span>
+                    <span id="quiz-progress" class="text-sm font-semibold text-slate-400">Question 1/3</span>
+                </div>
+
+                <h2 id="quiz-question" class="text-2xl font-bold text-slate-800 leading-snug">คำถามกำลังโหลด...</h2>
+
+                <div id="quiz-options" class="flex flex-col gap-3">
+                    <!-- Options inject via JS -->
+                </div>
+            </div>
+        </div>
+
+        <!-- 4. SPEAKING SCREEN -->
+        <div id="screen-speaking" class="w-full max-w-sm hidden animate__animated animate__fadeIn">
+            <button onclick="showScreen('home')"
+                class="mb-4 text-slate-500 flex items-center gap-1 font-medium hover:text-purple-600">
+                <span>⬅</span> กลับหน้าแรก
+            </button>
+
+            <div class="bg-white rounded-3xl p-6 shadow-lg border-2 border-teal-100 space-y-6 text-center">
+                <span class="inline-block bg-teal-100 text-teal-700 px-3 py-1 rounded-full text-sm font-bold">AI
+                    Speaking</span>
+
+                <div class="space-y-2">
+                    <p class="text-sm text-slate-400">กรุณาออกเสียงคำนี้:</p>
+                    <h2 id="speak-target" class="text-4xl font-extrabold text-teal-600 tracking-wide">Banana</h2>
+                    <button onclick="playSound(document.getElementById('speak-target').innerText)"
+                        class="text-slate-400 hover:text-teal-500 text-sm flex items-center justify-center gap-1 mx-auto mt-1">
+                        🔊 ฟังเจ้าของภาษา
+                    </button>
+                </div>
+
+                <!-- Mic trigger -->
+                <div class="py-4">
+                    <button id="mic-btn" onclick="toggleListening()"
+                        class="w-24 h-24 bg-teal-500 hover:bg-teal-600 rounded-full flex justify-center items-center text-white text-4xl shadow-xl shadow-teal-100 border-4 border-white transition-all transform active:scale-95 mx-auto">
+                        🎙️
+                    </button>
+                    <p id="mic-status" class="text-sm text-slate-400 mt-3 font-medium">กดปุ่มไมค์เพื่อเริ่มพูด</p>
+                </div>
+
+                <!-- Speech Feedback block -->
+                <div id="speak-feedback-box" class="hidden p-4 rounded-2xl bg-slate-50 space-y-1">
+                    <p class="text-xs text-slate-400">เสียงที่คุณพูดออกไป:</p>
+                    <p id="spoken-text" class="font-bold text-lg text-slate-700">""</p>
+                    <p id="speak-result-msg" class="font-bold text-sm mt-2"></p>
+                </div>
+
+                <button onclick="nextSpeaking()"
+                    class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-3 rounded-xl transition-all">
+                    ข้าม / คำถัดไป ➔
+                </button>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="py-4 text-center text-xs text-slate-400">
+        LingoLand Engine 2026 • สนุกและเก่งภาษาอังกฤษไปด้วยกัน 💫
+    </footer>
+
+    <!-- LOGIC APPLICATION SCRIPT -->
+    <script>
+        // --- GAME DATA ---
+        let currentScore = 0;
+
+        const vocabList = [
+            { word: "Elephant", emoji: "🐘", translation: "ช้าง" },
+            { word: "Sunflower", emoji: "🌻", translation: "ทานตะวัน" },
+            { word: "Ice cream", emoji: "🍦", translation: "ไอศกรีม" },
+            { word: "Rainbow", emoji: "🌈", translation: "สายรุ้ง" }
+        ];
+        let vocabIndex = 0;
+
+        const quizList = [
+            { q: "อะไรคือความหมายของ 'Beautiful'?", a: ["น่ารัก", "สวยงาม", "ใจดี", "ขี้เกียจ"], correct: 1 },
+            { q: "สัตว์ตัวไหนร้อง 'Meow'?", a: ["Dog", "Bird", "Cat", "Lion"], correct: 2 },
+            { q: "ข้อใดคือคำศัพท์ของสี 'เหลือง'?", a: ["Blue", "Yellow", "Red", "Green"], correct: 1 }
+        ];
+        let quizIndex = 0;
+
+        const speakList = ["Hello", "Thank you", "Delicious", "Butterfly", "Computer"];
+        let speakIndex = 0;
+        let recognition;
+        let isListening = false;
+
+        // --- CORE NAVIGATION ---
+        function showScreen(screenId) {
+            document.getElementById('screen-home').classList.add('hidden');
+            document.getElementById('screen-vocab').classList.add('hidden');
+            document.getElementById('screen-quiz').classList.add('hidden');
+            document.getElementById('screen-speaking').classList.add('hidden');
+
+            document.getElementById(`screen-${screenId}`).classList.remove('hidden');
+
+            // Stop speech loop if navigating away
+            if (screenId !== 'speaking' && isListening) { stopListening(); }
+        }
+
+        function updateScore(points) {
+            currentScore += points;
+            document.getElementById('score-display').innerText = `Score: ${currentScore}`;
+
+            // Highlight effect animation
+            const disp = document.getElementById('score-display');
+            disp.classList.add('animate__animated', 'animate__rubberBand');
+            disp.addEventListener('animationend', () => {
+                disp.classList.remove('animate__animated', 'animate__rubberBand');
+            });
+        }
+
+        // TTS - Text to Speech function
+        function playSound(text) {
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'en-US';
+            window.speechSynthesis.speak(utterance);
+        }
+
+        // --- MODE 1: VOCABULARY ---
+        function startVocabulary() {
+            vocabIndex = 0;
+            renderVocab();
+            showScreen('vocab');
+        }
+
+        function renderVocab() {
+            document.getElementById('vocab-card').classList.remove('flipped');
+            const current = vocabList[vocabIndex];
+            document.getElementById('vocab-emoji').innerText = current.emoji;
+            document.getElementById('vocab-word').innerText = current.word;
+            document.getElementById('vocab-translation').innerText = current.translation;
+        }
+
+        function nextVocab() {
+            vocabIndex = (vocabIndex + 1) % vocabList.length;
+            updateScore(5); // ได้แต้มเล็กน้อยจากการอ่านสะสมคำศัพท์
+            renderVocab();
+        }
+
+        // --- MODE 2: QUIZ ---
+        function startQuiz() {
+            quizIndex = 0;
+            renderQuiz();
+            showScreen('quiz');
+        }
+
+        function renderQuiz() {
+            const current = quizList[quizIndex];
+            document.getElementById('quiz-progress').innerText = `Question ${quizIndex + 1}/${quizList.length}`;
+            document.getElementById('quiz-question').innerText = current.q;
+
+            const optionsContainer = document.getElementById('quiz-options');
+            optionsContainer.innerHTML = '';
+
+            current.a.forEach((option, idx) => {
+                const btn = document.createElement('button');
+                btn.className = "w-full p-4 bg-slate-50 border-2 border-slate-200 text-left rounded-2xl font-medium text-slate-700 transition-all hover:bg-amber-50 hover:border-amber-300 active:scale-[0.99]";
+                btn.innerText = option;
+                btn.onclick = () => checkQuizAnswer(idx, btn);
+                optionsContainer.appendChild(btn);
+            });
+        }
+
+        function checkQuizAnswer(selectedIdx, buttonElement) {
+            const current = quizList[quizIndex];
+            const allButtons = document.getElementById('quiz-options').children;
+
+            // ปิดไม่ให้กดซ้ำ
+            for (let btn of allButtons) { btn.disabled = true; }
+
+            if (selectedIdx === current.correct) {
+                buttonElement.className = "w-full p-4 bg-emerald-100 border-2 border-emerald-400 text-left rounded-2xl font-bold text-emerald-700 animate__animated animate__pulse";
+                updateScore(15);
+            } else {
+                buttonElement.className = "w-full p-4 bg-rose-100 border-2 border-rose-400 text-left rounded-2xl font-bold text-rose-700 animate__animated animate__shakeX";
+                allButtons[current.correct].className = "w-full p-4 bg-emerald-100 border-2 border-emerald-400 text-left rounded-2xl font-bold text-emerald-700";
+            }
+
+            // ข้ามไปข้อต่อไปอัตโนมัติหลังผ่านไป 1.5 วินาที
+            setTimeout(() => {
+                quizIndex++;
+                if (quizIndex < quizList.length) {
+                    renderQuiz();
+                } else {
+                    alert("ยินดีด้วย! คุณตอบครบทุกข้อแล้ว 🎉 กลับไปลุยโหมดอื่นต่อได้เลยนะ");
+                    showScreen('home');
+                }
+            }, 1500);
+        }
+
+        // --- MODE 3: SPEAKING (Speech Recognition) ---
+        function startSpeaking() {
+            speakIndex = 0;
+            renderSpeaking();
+            showScreen('speaking');
+            setupSpeechRecognition();
+        }
+
+        function renderSpeaking() {
+            document.getElementById('speak-target').innerText = speakList[speakIndex];
+            document.getElementById('speak-feedback-box').classList.add('hidden');
+            resetMicButton();
+        }
+
+        function nextSpeaking() {
+            speakIndex = (speakIndex + 1) % speakList.length;
+            renderSpeaking();
+        }
+
+        function setupSpeechRecognition() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                document.getElementById('mic-status').innerText = "❌ เบราว์เซอร์ของคุณไม่รองรับการฝึกออกเสียงเสียง (แนะนำให้ใช้ Chrome)";
+                document.getElementById('mic-btn').disabled = true;
+                return;
+            }
+
+            recognition = new SpeechRecognition();
+            recognition.lang = 'en-US';
+            recognition.interimResults = false;
+            recognition.maxAlternatives = 1;
+
+            recognition.onstart = () => {
+                isListening = true;
+                document.getElementById('mic-btn').innerText = "🛑";
+                document.getElementById('mic-btn').classList.remove('bg-teal-500');
+                document.getElementById('mic-btn').classList.add('bg-rose-500', 'animate-pulse');
+                document.getElementById('mic-status').innerText = "กำลังฟังเสียงของคุณ... พูดได้เลย!";
+            };
+
+            recognition.onspeechend = () => {
+                stopListening();
+            };
+
+            recognition.onerror = (event) => {
+                console.error(event.error);
+                stopListening();
+                document.getElementById('mic-status').innerText = "เกิดข้อผิดพลาด ลองใหม่อีกครั้ง";
+            };
+
+            recognition.onresult = (event) => {
+                const spokenText = event.results[0][0].transcript;
+                const targetText = speakList[speakIndex];
+
+                document.getElementById('spoken-text').innerText = `"${spokenText}"`;
+                document.getElementById('speak-feedback-box').classList.remove('hidden');
+
+                const resMsg = document.getElementById('speak-result-msg');
+                // คลีนค่า string เพื่อความแม่นยำในการเปรียบเทียบ
+                if (spokenText.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "") === targetText.toLowerCase().trim()) {
+                    resMsg.innerText = "🎯 สำเนียงถูกต้องสุดยอด! +20 คะแนน";
+                    resMsg.className = "font-bold text-sm mt-2 text-emerald-600";
+                    updateScore(20);
+                } else {
+                    resMsg.innerText = "❌ เกือบถูกแล้ว! ลองฟังเสียงเจ้าของภาษาแล้วลองใหม่อีกทีนะ";
+                    resMsg.className = "font-bold text-sm mt-2 text-rose-500";
+                }
+            };
+        }
+
+        function toggleListening() {
+            if (!recognition) return;
+            if (isListening) {
+                stopListening();
+            } else {
+                recognition.start();
+            }
+        }
+
+        function stopListening() {
+            if (recognition && isListening) {
+                recognition.stop();
+            }
+            resetMicButton();
+        }
+
+        function resetMicButton() {
+            isListening = false;
+            const micBtn = document.getElementById('mic-btn');
+            if (micBtn) {
+                micBtn.innerText = "🎙️";
+                micBtn.className = "w-24 h-24 bg-teal-500 hover:bg-teal-600 rounded-full flex justify-center items-center text-white text-4xl shadow-xl shadow-teal-100 border-4 border-white transition-all transform active:scale-95 mx-auto";
+            }
+            const status = document.getElementById('mic-status');
+            if (status) status.innerText = "กดปุ่มไมค์เพื่อเริ่มพูด";
+        }
+    </script>
+</body>
+
+</html>
